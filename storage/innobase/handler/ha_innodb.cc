@@ -19705,10 +19705,12 @@ static MYSQL_SYSVAR_ULONGLONG(log_file_size, srv_log_file_size,
 /* OS_FILE_LOG_BLOCK_SIZE would be more appropriate than UNIV_PAGE_SIZE_MAX,
 but fil_space_t is being used for the redo log, and it uses data pages. */
 
-static MYSQL_SYSVAR_ULONG(log_files_in_group, srv_n_log_files,
+namespace deprecated {
+ulong srv_n_log_files;
+};
+static MYSQL_SYSVAR_ULONG(log_files_in_group, deprecated::srv_n_log_files,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-  "Number of log files in the log group. InnoDB writes to the files in a circular fashion.",
-  NULL, NULL, 1, 1, SRV_N_LOG_FILES_MAX, 0);
+  innodb_deprecated_ignored, NULL, NULL, 1, 1, 100, 0);
 
 static MYSQL_SYSVAR_ULONG(log_write_ahead_size, srv_log_write_ahead_size,
   PLUGIN_VAR_RQCMDARG,
