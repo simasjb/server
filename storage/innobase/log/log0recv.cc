@@ -1174,6 +1174,57 @@ recv_find_max_checkpoint_0(ulint* max_field)
 	return(DB_ERROR);
 }
 
+/** Return number of ib_logfile0..100 files */
+static size_t count_log_files()
+{
+  size_t counter= 0;
+  for (int i= 0; i < 101; i++)
+  {
+    auto path=
+        get_log_file_path(LOG_FILE_NAME_PREFIX).append(std::to_string(i));
+    os_file_stat_t stat;
+    dberr_t err= os_file_get_status(path.c_str(), &stat, false, true);
+    if (err)
+      break;
+
+    if (stat.type != OS_FILE_TYPE_FILE)
+      break;
+
+    counter++;
+  }
+  return counter;
+}
+
+/** Same as cals_lsn_offset() except that it supports multiple files */
+lsn_t log_t::file::calc_lsn_offset_old(lsn_t lsn, size_t files_count) const
+{
+  ut_ad(log_sys.mutex.is_owned() || log_sys.write_mutex.is_owned());
+  const lsn_t size= capacity() * files_count;
+  lsn_t l= lsn - this->lsn;
+  if (longlong(l) < 0)
+  {
+    l= lsn_t(-longlong(l)) % size;
+    l= size - l;
+  }
+
+  l+= lsn_offset - LOG_FILE_HDR_SIZE * (1 + lsn_offset / file_size);
+  l%= size;
+  return l + LOG_FILE_HDR_SIZE * (1 + l / (file_size - LOG_FILE_HDR_SIZE));
+}
+
+/** Chooses redo log file, opens it, reads from it and closes a file */
+static void read_redo_file_one_shot(os_offset_t total_offset, span<byte> buf)
+{
+  auto file_size= static_cast<size_t>(log_sys.log.file_size);
+  size_t idx= total_offset / file_size;
+  auto path=
+      get_log_file_path(LOG_FILE_NAME_PREFIX).append(std::to_string(idx));
+  log_file_t file(std::move(path));
+  ut_a(file.open());
+  os_offset_t offset= total_offset % file_size;
+  ut_a(file.read(offset, buf) == DB_SUCCESS);
+}
+
 /** Determine if a pre-MySQL 5.7.9/MariaDB 10.2.2 redo log is clean.
 @param[in]	lsn	checkpoint LSN
 @param[in]	crypt	whether the log might be encrypted
@@ -1183,7 +1234,8 @@ recv_find_max_checkpoint_0(ulint* max_field)
 static dberr_t recv_log_format_0_recover(lsn_t lsn, bool crypt)
 {
 	log_mutex_enter();
-	const lsn_t	source_offset = log_sys.log.calc_lsn_offset(lsn);
+	const lsn_t source_offset
+		= log_sys.log.calc_lsn_offset_old(lsn, count_log_files());
 	log_mutex_exit();
 	byte*		buf = log_sys.buf;
 
@@ -1191,8 +1243,8 @@ static dberr_t recv_log_format_0_recover(lsn_t lsn, bool crypt)
 		"Upgrade after a crash is not supported."
 		" This redo log was created before MariaDB 10.2.2";
 
-	log_sys.log.read(source_offset & ~(OS_FILE_LOG_BLOCK_SIZE - 1),
-			 {buf, OS_FILE_LOG_BLOCK_SIZE});
+	read_redo_file_one_shot(source_offset & ~(OS_FILE_LOG_BLOCK_SIZE - 1),
+				{buf, OS_FILE_LOG_BLOCK_SIZE});
 
 	if (log_block_calc_checksum_format_0(buf)
 	    != log_block_get_checksum(buf)
@@ -1235,11 +1287,12 @@ static dberr_t recv_log_format_0_recover(lsn_t lsn, bool crypt)
 static dberr_t recv_log_recover_10_4()
 {
 	const lsn_t	lsn = log_sys.log.get_lsn();
-	const lsn_t	source_offset = log_sys.log.calc_lsn_offset(lsn);
+	const lsn_t	source_offset =
+		log_sys.log.calc_lsn_offset_old(lsn, count_log_files());
 	byte*		buf = log_sys.buf;
 
-	log_sys.log.read(source_offset & ~(OS_FILE_LOG_BLOCK_SIZE - 1),
-			 {buf, OS_FILE_LOG_BLOCK_SIZE});
+	read_redo_file_one_shot(source_offset & ~(OS_FILE_LOG_BLOCK_SIZE - 1),
+				{buf, OS_FILE_LOG_BLOCK_SIZE});
 
 	ulint crc = log_block_calc_checksum_crc32(buf);
 	ulint cksum = log_block_get_checksum(buf);
