@@ -1,0 +1,43 @@
+include/master-slave.inc
+[connection master]
+connection master;
+CALL mtr.add_suppression("Found 1 prepared XA transactions");
+CALL mtr.add_suppression("Found 2 prepared XA transactions");
+CREATE TABLE t ( f INT ) ENGINE=INNODB;
+XA START 'xa1';
+INSERT INTO t VALUES (20);
+XA END 'xa1';
+XA PREPARE 'xa1';
+connection slave;
+include/stop_slave.inc
+connection master1;
+XA START 'xa2';
+INSERT INTO t VALUES (30);
+XA END 'xa2';
+SET GLOBAL DEBUG_DBUG="d,simulate_crash_after_binlog_prepare";
+XA PREPARE 'xa2';
+ERROR HY000: Lost connection to MySQL server during query
+include/rpl_start_server.inc [server_number=1]
+connection slave;
+include/start_slave.inc
+connection master;
+SELECT * FROM t;
+f
+XA RECOVER;
+formatID	gtrid_length	bqual_length	data
+1	3	0	xa1
+1	3	0	xa2
+XA COMMIT 'xa1';
+XA COMMIT 'xa2';
+SELECT * FROM t;
+f
+20
+30
+connection slave;
+SELECT * FROM t;
+f
+20
+30
+connection master;
+DROP TABLE t;
+include/rpl_end.inc
