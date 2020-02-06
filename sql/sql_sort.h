@@ -20,8 +20,8 @@
 #include "my_base.h"                            /* ha_rows */
 #include <my_sys.h>                             /* qsort2_cmp */
 #include "queues.h"
+#include "sql_class.h"
 
-struct SORT_FIELD;
 class Field;
 struct TABLE;
 
@@ -156,6 +156,8 @@ public:
 };
 
 typedef Bounds_checked_array<SORT_ADDON_FIELD> Addon_fields_array;
+typedef Bounds_checked_array<SORT_FIELD> Sort_keys_array;
+
 
 /**
   This class wraps information about usage of addon fields.
@@ -242,6 +244,48 @@ private:
 };
 
 
+class Sort_keys
+{
+public:
+  Sort_keys(Sort_keys_array arr):
+      sortorder(arr),
+      m_using_packed_sortkeys(false)
+  {
+    DBUG_ASSERT(!arr.is_null());
+  }
+
+  SORT_FIELD *begin() { return sortorder.begin(); }
+  SORT_FIELD *end()   { return sortorder.end(); }
+  size_t size()       { return sortorder.size(); }
+
+  SORT_FIELD *begin() const { return sortorder.begin(); }
+  SORT_FIELD *end()   const { return sortorder.end(); }
+  size_t size()       const { return sortorder.size(); }
+
+  bool using_packed_sortkeys() { return m_using_packed_sortkeys; }
+  void set_using_packed_sortkeys(bool val)
+  {
+    m_using_packed_sortkeys= val;
+  }
+
+  static void store_sortkey_length(uchar *p, uint sz)
+  {
+    int4store(p, sz - size_of_length_field);
+  }
+
+  static uint read_sortkey_length(uchar *p)
+  {
+    return size_of_length_field + uint4korr(p);
+  }
+
+  static const uint size_of_length_field= 4;
+
+private:
+  Sort_keys_array sortorder;
+  bool m_using_packed_sortkeys;
+};
+
+
 /**
   There are two record formats for sorting:
     |<key a><key b>...|<rowid>|
@@ -289,6 +333,7 @@ public:
    */
   Bounds_checked_array<SORT_FIELD> local_sortorder;
   Addon_fields *addon_fields;     // Descriptors for companion fields.
+  Sort_keys *sort_keys;
   bool using_pq;
 
   uchar *unique_buff;
@@ -314,6 +359,12 @@ public:
                 (addon_fields != NULL &&
                  addon_fields->using_packed_addons()));
     return m_using_packed_addons;
+  }
+
+  bool using_packed_sortkeys() const
+  {
+    DBUG_ASSERT(m_using_packed_sortkeys == sort_keys->using_packed_sortkeys());
+    return m_using_packed_sortkeys;
   }
 
   /// Are we using "addon fields"?
@@ -342,10 +393,14 @@ public:
     const uchar *record_end= plen + *resl;
     *recl= static_cast<uint>(record_end - record_start);
   }
+  void filesort_uses_packed_sortkeys();
+  void try_to_pack_sortkeys();
 
 private:
   uint m_packable_length;
+  uint m_packable_sortkey_length;
   bool m_using_packed_addons; ///< caches the value of using_packed_addons()
+  bool m_using_packed_sortkeys;
 };
 
 typedef Bounds_checked_array<uchar> Sort_buffer;

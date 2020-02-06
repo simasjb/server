@@ -634,7 +634,16 @@ static int rr_unpack_from_buffer(READ_RECORD *info)
 
   uchar *record= info->sort_info->get_sorted_record(
     static_cast<uint>(info->unpack_counter));
-  uchar *plen= record + info->sort_info->get_sort_length();
+
+  /*
+    Sort length is calculate for both the cases, when packing is done and when
+    packing is not done
+  */
+  uint sort_length= info->sort_info->using_packed_sortkeys() ?
+                    Sort_keys::read_sortkey_length(record):
+                    info->sort_info->get_sort_length();
+
+  uchar *plen= record + sort_length;
   info->sort_info->unpack_addon_fields<Packed_addon_fields>(plen);
   info->unpack_counter++;
   return 0;

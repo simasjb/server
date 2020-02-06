@@ -1411,6 +1411,7 @@ public:
   }
 
   void make_sort_key(uchar *buff, uint length);
+  uchar* make_sort_key(uchar *buff);
   virtual void make_send_field(Send_field *);
   virtual void sort_string(uchar *buff,uint length)=0;
   virtual bool optimize_range(uint idx, uint part) const;

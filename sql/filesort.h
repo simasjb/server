@@ -28,6 +28,7 @@ struct SORT_FIELD;
 typedef struct st_order ORDER;
 class JOIN;
 class Addon_fields;
+class Sort_keys;
 
 /**
   Sorting related info.
@@ -73,7 +74,7 @@ public:
 
   ~Filesort() { cleanup(); }
   /* Prepare ORDER BY list for sorting. */
-  uint make_sortorder(THD *thd, JOIN *join, table_map first_table_bit);
+  Sort_keys* make_sortorder(THD *thd, JOIN *join, table_map first_table_bit);
 
 private:
   void cleanup();
@@ -121,6 +122,7 @@ public:
   LEX_STRING buffpek;           /* Buffer for buffpek structures */
   Addon_fields *addon_fields;   /* Addon field descriptors */
   uchar     *record_pointers;    /* If sorted in memory */
+  Sort_keys *sort_keys;
 
   /**
     If the entire result of filesort fits in memory, we skip the merge phase.
@@ -201,6 +203,7 @@ public:
   template<bool Packed_addon_fields>
   inline void unpack_addon_fields(uchar *buff);
 
+  bool using_packed_sortkeys();
 
   friend SORT_INFO *filesort(THD *thd, TABLE *table, Filesort *filesort,
                              Filesort_tracker* tracker, JOIN *join,

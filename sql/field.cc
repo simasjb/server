@@ -1029,6 +1029,20 @@ void Field::make_sort_key(uchar *buff,uint length)
 }
 
 
+uchar* Field::make_sort_key(uchar *buff)
+{
+  if (maybe_null())
+  {
+    if (is_null())
+    {
+      *buff++= 0;
+      return buff;
+    }
+    *buff++=1;
+  }
+  return pack(buff, ptr);
+}
+
 /**
   @brief
   Determine the relative position of the field value in a numeric interval

@@ -86,6 +86,7 @@ class handler;
 struct Schema_specification_st;
 struct TABLE;
 struct SORT_FIELD_ATTR;
+struct SORT_FIELD;
 class Vers_history_point;
 class Virtual_column_info;
 class Conv_source;
@@ -3758,6 +3759,11 @@ public:
   virtual void sortlength(THD *thd,
                           const Type_std_attributes *item,
                           SORT_FIELD_ATTR *attr) const= 0;
+  virtual bool is_packable() const { return false; }
+  virtual int compare_packed_keys(THD *thd,
+                                  const Type_std_attributes *item,
+                                  uchar *a, uchar *b,
+                                  SORT_FIELD *sortorder) const;
 
   virtual uint32 max_display_length(const Item *item) const= 0;
   virtual uint32 Item_decimal_notation_int_digits(const Item *item) const { return 0; }
@@ -5039,6 +5045,11 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const override;
+  int compare_packed_keys(THD *thd,
+                          const Type_std_attributes *item,
+                          uchar *a, uchar *b,
+                          SORT_FIELD *sortorder) const override;
+  bool is_packable()const override { return true; }
   bool union_element_finalize(const Item * item) const override;
   uint calc_key_length(const Column_definition &def) const override;
   bool Column_definition_prepare_stage1(THD *thd,
