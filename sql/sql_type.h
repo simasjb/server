@@ -3336,11 +3336,11 @@ protected:
   void store_sort_key_longlong(uchar *to, bool unsigned_flag,
                                longlong value) const;
 
-  void make_sort_key_longlong_ext(uchar *to,
-                                  bool maybe_null, bool null_value,
-                                  bool unsigned_flag,
-                                  longlong value,
-                                  const SORT_FIELD_ATTR *sort_field) const;
+  uchar* make_sort_key_longlong_ext(uchar *to,
+                                   bool maybe_null, bool null_value,
+                                   bool unsigned_flag,
+                                   longlong value,
+                                   const SORT_FIELD_ATTR *sort_field) const;
 
   bool Item_func_or_sum_illegal_param(const char *name) const;
   bool Item_func_or_sum_illegal_param(const Item_func_or_sum *) const;
@@ -4177,6 +4177,7 @@ public:
                            Sort_param *param) const override
   {
     DBUG_ASSERT(0);
+    return NULL;
   }
   void sortlength(THD *thd, const Type_std_attributes *item,
                             SORT_FIELD_ATTR *attr) const override

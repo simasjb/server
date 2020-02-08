@@ -1377,6 +1377,29 @@ void Type_handler_inet6::make_sort_key(uchar *to, Item *item,
   memcpy(to, tmp.ptr(), tmp.length());
 }
 
+uchar*
+Type_handler_inet6::make_sort_key_ext(uchar *to, Item *item,
+                                      const SORT_FIELD_ATTR *sort_field,
+                                      Sort_param *param) const
+{
+  DBUG_ASSERT(item->type_handler() == this);
+  NativeBufferInet6 tmp;
+  item->val_native_result(current_thd, &tmp);
+  if (item->maybe_null)
+  {
+    if (item->null_value)
+    {
+      memset(to, 0, Inet6::binary_length() + 1);
+      return to++;
+    }
+    *to++= 1;
+  }
+  DBUG_ASSERT(!item->null_value);
+  DBUG_ASSERT(Inet6::binary_length() == tmp.length());
+  DBUG_ASSERT(Inet6::binary_length() == sort_field->length);
+  memcpy(to, tmp.ptr(), tmp.length());
+  return to+tmp.length();
+}
 
 void Type_handler_inet6::sortlength(THD *thd,
                                     const Type_std_attributes *item,

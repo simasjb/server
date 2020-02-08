@@ -1186,6 +1186,24 @@ Type_handler_timestamp_common::make_sort_key(uchar *to, Item *item,
 
 
 void
+Type_handler::store_sort_key_longlong(uchar *to, bool unsigned_flag,
+                                      longlong value) const
+{
+  to[7]= (uchar) value;
+  to[6]= (uchar) (value >> 8);
+  to[5]= (uchar) (value >> 16);
+  to[4]= (uchar) (value >> 24);
+  to[3]= (uchar) (value >> 32);
+  to[2]= (uchar) (value >> 40);
+  to[1]= (uchar) (value >> 48);
+  if (unsigned_flag)                    /* Fix sign */
+    to[0]= (uchar) (value >> 56);
+  else
+    to[0]= (uchar) (value >> 56) ^ 128; /* Reverse signbit */
+}
+
+
+void
 Type_handler::make_sort_key_longlong(uchar *to,
                                      bool maybe_null,
                                      bool null_value,
@@ -1202,17 +1220,27 @@ Type_handler::make_sort_key_longlong(uchar *to,
     }
     *to++= 1;
   }
-  to[7]= (uchar) value;
-  to[6]= (uchar) (value >> 8);
-  to[5]= (uchar) (value >> 16);
-  to[4]= (uchar) (value >> 24);
-  to[3]= (uchar) (value >> 32);
-  to[2]= (uchar) (value >> 40);
-  to[1]= (uchar) (value >> 48);
-  if (unsigned_flag)                    /* Fix sign */
-    to[0]= (uchar) (value >> 56);
-  else
-    to[0]= (uchar) (value >> 56) ^ 128;	/* Reverse signbit */
+  store_sort_key_longlong(to, unsigned_flag, value);
+}
+
+
+uchar*
+Type_handler::make_sort_key_longlong_ext(uchar *to, bool maybe_null,
+                                         bool null_value, bool unsigned_flag,
+                                         longlong value,
+                                         const SORT_FIELD_ATTR *sort_field) const
+{
+  if (maybe_null)
+  {
+    if (null_value)
+    {
+      memset(to, 0, 9);
+      return to++;
+    }
+    *to++= 1;
+  }
+  store_sort_key_longlong(to, unsigned_flag, value);
+  return to+= sort_field->length;
 }
 
 
@@ -1252,6 +1280,101 @@ Type_handler_real_result::make_sort_key(uchar *to, Item *item,
     *to++= 1;
   }
   change_double_for_sort(value, to);
+}
+
+
+uchar*
+Type_handler_string_result::make_sort_key_ext(uchar *to, Item *item,
+                                           const SORT_FIELD_ATTR *sort_field,
+                                           Sort_param *param) const
+{
+
+}
+
+
+uchar*
+Type_handler_int_result::make_sort_key_ext(uchar *to, Item *item,
+                                           const SORT_FIELD_ATTR *sort_field,
+                                           Sort_param *param) const
+{
+  longlong value= item->val_int_result();
+  return make_sort_key_longlong_ext(to, item->maybe_null, item->null_value,
+                                    item->unsigned_flag, value, sort_field);
+}
+
+
+uchar*
+Type_handler_decimal_result::make_sort_key_ext(uchar *to, Item *item,
+                                           const SORT_FIELD_ATTR *sort_field,
+                                           Sort_param *param) const
+{
+  my_decimal dec_buf, *dec_val= item->val_decimal_result(&dec_buf);
+  if (item->maybe_null)
+  {
+    if (item->null_value)
+    {
+      *to++=0;
+      return to;
+    }
+    *to++= 1;
+  }
+  dec_val->to_binary(to, item->max_length - (item->decimals ? 1 : 0),
+                     item->decimals);
+  return to+sort_field->length;
+}
+
+uchar*
+Type_handler_real_result::make_sort_key_ext(uchar *to, Item *item,
+                                        const SORT_FIELD_ATTR *sort_field,
+                                        Sort_param *param) const
+{
+  double value= item->val_result();
+  if (item->maybe_null)
+  {
+    if (item->null_value)
+    {
+      *to++=0;
+      return to;
+    }
+    *to++= 1;
+  }
+  change_double_for_sort(value, to);
+  return to+sort_field->length;
+}
+
+
+uchar*
+Type_handler_temporal_result::make_sort_key_ext(uchar *to, Item *item,
+                                                const SORT_FIELD_ATTR *sort_field,
+                                                Sort_param *param) const
+{
+  MYSQL_TIME buf;
+  // This is a temporal type. No nanoseconds. Rounding mode is not important.
+  DBUG_ASSERT(item->cmp_type() == TIME_RESULT);
+  static const Temporal::Options opt(TIME_INVALID_DATES, TIME_FRAC_NONE);
+  if (item->get_date_result(current_thd, &buf, opt))
+  {
+    DBUG_ASSERT(item->maybe_null);
+    DBUG_ASSERT(item->null_value);
+    return make_sort_key_longlong_ext(to, item->maybe_null, true,
+                                      item->unsigned_flag, 0, sort_field);
+  }
+  return make_sort_key_longlong_ext(to, item->maybe_null, false,
+                                    item->unsigned_flag, pack_time(&buf),
+                                    sort_field);
+}
+
+
+/*
+  TODO(varun): check this with Bar
+*/
+
+uchar*
+Type_handler_timestamp_common::make_sort_key_ext(uchar *to, Item *item,
+                                                 const SORT_FIELD_ATTR *sort_field,
+                                                 Sort_param *param) const
+{
+  return to;
 }
 
 
