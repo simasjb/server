@@ -1409,21 +1409,8 @@ static uint make_sortkey(Sort_param *param, uchar *to, uchar *ref_pos)
         to++;
     }
     if (sort_field->reverse)
-    {							/* Revers key */
-      if (maybe_null && (to[-1]= !to[-1]))
-      {
-        to+= sort_field->length; // don't waste the time reversing all 0's
-        continue;
-      }
-      length=sort_field->length;
-      while (length--)
-      {
-        *to = (uchar) (~ *to);
-        to++;
-      }
-    }
-    else
-      to+= sort_field->length;
+      reverse_key(to, maybe_null, sort_field);
+    to+= sort_field->length;
   }
 
   if (param->using_packed_sortkeys())
@@ -2748,4 +2735,21 @@ Field_longstr::compare_packed_keys(uchar *a, size_t *a_len,
 {
   return compare_packed_keys_ext(charset(), a, a_len, b, b_len, sortorder,
                                  sortorder->field->maybe_null());
+}
+
+
+void reverse_key(uchar *to, bool maybe_null, const SORT_FIELD_ATTR *sort_field)
+{
+  uint length;
+  if (maybe_null && (to[-1]= !to[-1]))
+  {
+    to+= sort_field->length; // don't waste the time reversing all 0's
+    return;
+  }
+  length=sort_field->length;
+  while (length--)
+  {
+    *to = (uchar) (~ *to);
+    to++;
+  }
 }

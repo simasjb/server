@@ -25,6 +25,7 @@ class THD;
 struct TABLE;
 class Filesort_tracker;
 struct SORT_FIELD;
+struct SORT_FIELD_ATTR;
 typedef struct st_order ORDER;
 class JOIN;
 class Addon_fields;
@@ -226,5 +227,7 @@ int compare_packed_keys_ext(uchar *a, size_t *a_len,
 int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
                             uchar *b, size_t *b_len,
                             SORT_FIELD *sortorder);
+void reverse_key(uchar *to, bool maybe_null,
+                 const SORT_FIELD_ATTR *sort_field);
 
 #endif /* FILESORT_INCLUDED */
