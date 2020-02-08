@@ -33,12 +33,6 @@ double get_merge_cost(ha_rows num_elements, ha_rows num_buffers, uint elem_size)
 }
 }
 
-static int native_compare2(size_t *length, unsigned char **a, unsigned char **b);
-
-qsort2_cmp get_ptr_compare2(size_t size __attribute__((unused)))
-{
-  return (qsort2_cmp) native_compare2;
-}
 
 /**
   This is a simplified, and faster version of @see get_merge_many_buffs_cost().
@@ -194,13 +188,10 @@ void Filesort_buffer::sort_buffer(const Sort_param *param, uint count)
                        get_ptr_compare2(size) :
                        get_ptr_compare(size);
 
-  my_qsort2(m_sort_keys, count, sizeof(uchar*), cmp_func, &size);
+  my_qsort2(m_sort_keys, count, sizeof(uchar*), cmp_func,
+            param->using_packed_sortkeys() ?
+            (void*)param->sort_keys :
+            (void*) &size);
 }
 
 
-static int native_compare2(size_t *length, unsigned char **a, unsigned char **b)
-{
-  return memcmp(*a+ Sort_keys::size_of_length_field,
-                *b+ Sort_keys::size_of_length_field,
-                *length);
-}

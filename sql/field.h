@@ -1412,6 +1412,9 @@ public:
 
   void make_sort_key(uchar *buff, uint length);
   uchar* make_sort_key(uchar *buff);
+  virtual int compare_packed_keys(uchar *a, size_t *a_len,
+                                  uchar *b, size_t *b_len,
+                                  SORT_FIELD *sortorder) const;
   virtual void make_send_field(Send_field *);
   virtual void sort_string(uchar *buff,uint length)=0;
   virtual bool optimize_range(uint idx, uint part) const;
@@ -2141,7 +2144,10 @@ public:
   bool can_optimize_range(const Item_bool_func *cond,
                           const Item *item,
                           bool is_eq_func) const;
-  bool is_packable() { return true; }
+  bool is_packable() override { return true; }
+  int compare_packed_keys(uchar *a, size_t *a_len,
+                          uchar *b, size_t *b_len,
+                          SORT_FIELD *sortorder)const override;
 };
 
 /* base class for float and double and decimal (old one) */

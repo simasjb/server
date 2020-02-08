@@ -62,7 +62,6 @@ static Addon_fields *get_addon_fields(TABLE *table, uint sortlength,
 static bool check_if_pq_applicable(Sort_param *param, SORT_INFO *info,
                                    TABLE *table,
                                    ha_rows records, size_t memory_available);
-static uint32 read_length(const uchar *from, uint bytes);
 
 
 void Sort_param::init_for_filesort(uint sortlen, TABLE *table,
@@ -2104,29 +2103,6 @@ Type_handler_decimal_result::sortlength(THD *thd,
 }
 
 
-int
-Type_handler_string_result::compare_packed_keys(THD *thd,
-                                                const Type_std_attributes *item,
-                                                uchar *a, uchar *b,
-                                                SORT_FIELD *sortorder)const
-{
-  CHARSET_INFO *cs= item->collation.collation;
-  size_t a_len, b_len;
-  a_len= read_length(a, sortorder->length_bytes);
-  b_len= read_length(a, sortorder->length_bytes);
-  return cs->strnncollsp(a + sortorder->length_bytes, a_len,
-                        b + sortorder->length_bytes, b_len);
-}
-
-int
-Type_handler::compare_packed_keys(THD *thd, const Type_std_attributes *item,
-                                  uchar *a, uchar *b,
-                                  SORT_FIELD *sortorder)const
-{
-  return memcmp(a,b, sortorder->length);
-}
-
-
 /**
   Calculate length of sort key.
 
@@ -2482,7 +2458,7 @@ SORT_INFO::~SORT_INFO()
 }
 
 
-static uint32 read_length(const uchar *from, uint bytes)
+uint32 read_length(const uchar *from, uint bytes)
 {
   switch(bytes) {
   case 1: return from[0];
@@ -2491,4 +2467,162 @@ static uint32 read_length(const uchar *from, uint bytes)
   case 4: return uint4korr(from);
   default: DBUG_ASSERT(0); return 0;
   }
+}
+
+int native_compare2(size_t *length, unsigned char **a, unsigned char **b)
+{
+  return memcmp(*a+ Sort_keys::size_of_length_field,
+                *b+ Sort_keys::size_of_length_field,
+                *length);
+}
+
+int packed_keys_comparison(void *sortorder, unsigned char **a, unsigned char **b)
+{
+  int retval= 0;
+  size_t a_len, b_len;
+  size_t length_a=0, length_b=0;
+  Sort_keys *sort_keys= (Sort_keys*)sortorder;
+  for (SORT_FIELD *sort_field= sort_keys->begin();
+       sort_field != sort_keys->end(); sort_field++)
+  {
+    a_len= 0, b_len= 0;
+    if (sort_field->field)
+    {
+      retval= sort_field->field->compare_packed_keys(*a + length_a, &a_len,
+                                                     *b + length_b, &b_len,
+                                                     sort_field);
+    }
+    else
+    {
+      Item *item= sort_field->item;
+      retval= item->type_handler()->compare_packed_keys(*a + length_a, &a_len,
+                                                        *b + length_b, &b_len,
+                                                        sort_field);
+    }
+
+    if (retval)
+        return sort_field->reverse == ORDER::ORDER_ASC? retval : -retval;
+
+    length_a+= a_len;
+    length_b+= b_len;
+
+  }
+  return retval;
+}
+
+qsort2_cmp get_ptr_compare2(size_t size __attribute__((unused)))
+{
+  return (qsort2_cmp) packed_keys_comparison;
+}
+
+
+int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
+                            uchar *b, size_t *b_len,
+                            SORT_FIELD *sortorder, bool maybe_null)
+{
+  int retval;
+  size_t a_length, b_length;
+  if (maybe_null)
+  {
+    if (*a != *b)
+    {
+      *a_len++;
+      *b_len++;
+      if (*a == 0)
+      {
+        *b_len+= read_length(b, sortorder->length_bytes);
+        return -1;
+      }
+      else
+      {
+        *a_len+= read_length(b, sortorder->length_bytes);
+        return 1;
+      }
+    }
+    else
+    {
+      if (*a == 0)
+        return 0;
+    }
+  }
+
+  a_length= read_length(a, sortorder->length_bytes);
+  b_length= read_length(b, sortorder->length_bytes);
+
+  retval= cs->strnncollsp(a + sortorder->length_bytes, a_length,
+                          b + sortorder->length_bytes, b_length);
+
+  *a_len+= sortorder->length_bytes + a_length;
+  *b_len+= sortorder->length_bytes + b_length;
+  return retval;
+
+}
+int compare_packed_keys_ext(uchar *a, size_t *a_len,
+                        uchar *b, size_t *b_len,
+                        SORT_FIELD *sortorder, bool maybe_null)
+{
+  if (maybe_null)
+  {
+    if (*a != *b)
+    {
+      *a_len++;
+      *b_len++;
+      if (*a == 0)
+      {
+        *b_len+= sortorder->length;
+        return -1;
+      }
+      else
+      {
+        *a_len+= sortorder->length;
+        return 1;
+      }
+    }
+    else
+    {
+      if (*a == 0)
+        return 0;
+    }
+  }
+  *a_len+= sortorder->length;
+  *b_len+= sortorder->length;
+  return memcmp(a,b, sortorder->length);
+}
+
+
+
+int
+Type_handler_string_result::compare_packed_keys(uchar *a, size_t *a_len,
+                                                uchar *b, size_t *b_len,
+                                                SORT_FIELD *sortorder)const
+{
+  return compare_packed_keys_ext(sortorder->item->collation.collation,
+                                 a, a_len, b, b_len, sortorder,
+                                 sortorder->item->maybe_null);
+}
+
+int
+Type_handler::compare_packed_keys(uchar *a, size_t *a_len,
+                                  uchar *b, size_t *b_len,
+                                  SORT_FIELD *sortorder)const
+{
+  return compare_packed_keys_ext(a, a_len, b, b_len, sortorder,
+                                 sortorder->item->maybe_null);
+}
+
+int
+Field::compare_packed_keys(uchar *a, size_t *a_len, uchar *b, size_t *b_len,
+                           SORT_FIELD *sortorder)const
+{
+  return compare_packed_keys_ext(a, a_len, b, b_len, sortorder,
+                                 sortorder->field->maybe_null());
+}
+
+int
+Field_longstr::compare_packed_keys(uchar *a, size_t *a_len,
+                                   uchar *b, size_t *b_len,
+                                   SORT_FIELD *sortorder)const
+{
+  return compare_packed_keys_ext(charset(), a, a_len, b, b_len, sortorder,
+                                 sortorder->field->maybe_null());
 }

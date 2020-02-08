@@ -219,5 +219,12 @@ bool filesort_use_addons(TABLE *table, uint sortlength,
                          uint *m_packable_length);
 
 void change_double_for_sort(double nr,uchar *to);
+uint32 read_length(const uchar *from, uint bytes);
+int compare_packed_keys_ext(uchar *a, size_t *a_len,
+                        uchar *b, size_t *b_len,
+                        SORT_FIELD *sortorder);
+int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
+                            uchar *b, size_t *b_len,
+                            SORT_FIELD *sortorder);
 
 #endif /* FILESORT_INCLUDED */
