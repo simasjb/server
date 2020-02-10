@@ -4195,7 +4195,7 @@ static inline longlong read_bigendian(const uchar *from, uint bytes)
   }
 }
 
-static void store_lowendian(ulonglong num, uchar *to, uint bytes)
+static inline void store_lowendian(ulonglong num, uchar *to, uint bytes)
 {
   switch(bytes) {
   case 1: *to= (uchar)num;    break;
@@ -4207,7 +4207,7 @@ static void store_lowendian(ulonglong num, uchar *to, uint bytes)
   }
 }
 
-static longlong read_lowendian(const uchar *from, uint bytes)
+static inline longlong read_lowendian(const uchar *from, uint bytes)
 {
   switch(bytes) {
   case 1: return from[0];

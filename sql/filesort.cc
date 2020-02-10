@@ -274,7 +274,9 @@ SORT_INFO *filesort(THD *thd, TABLE *table, Filesort *filesort,
     param.try_to_pack_sortkeys();
     param.try_to_pack_addons(thd->variables.max_length_for_sort_data);
     param.using_pq= false;
-    if (!(param.tmp_buffer= (char*) my_malloc(param.sort_length,
+
+    if ((multi_byte_charset || param.using_packed_sortkeys()) &&
+        !(param.tmp_buffer= (char*) my_malloc(param.sort_length,
                                               MYF(MY_WME | MY_THREAD_SPECIFIC))))
       goto err;
 
@@ -1026,10 +1028,9 @@ write_keys(Sort_param *param,  SORT_INFO *fs_info, uint count,
 
 
 /**
-  Store length as suffix in high-byte-first order.
+  Store length in high-byte-first order.
 */
-
-static inline void store_length(uchar *to, uint length, uint pack_length)
+void store_length(uchar *to, uint length, uint pack_length)
 {
   switch (pack_length) {
   case 1:
@@ -1318,8 +1319,7 @@ Type_handler_string_result::make_sort_key_ext(uchar *to, Item *item,
   }
 
   /* Length always stored little-endian */
-  store_lowendian(static_cast<longlong>(res->length()), to,
-                  sort_field->length_bytes);
+  store_length(to, res->length(), sort_field->length_bytes);
   to+=sort_field->length_bytes;
   /* Store bytes of string */
   memcpy(to, (uchar*)res->ptr(), res->length());

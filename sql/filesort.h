@@ -221,6 +221,7 @@ bool filesort_use_addons(TABLE *table, uint sortlength,
 
 void change_double_for_sort(double nr,uchar *to);
 uint32 read_length(const uchar *from, uint bytes);
+void store_length(uchar *to, uint length, uint pack_length)
 int compare_packed_keys_ext(uchar *a, size_t *a_len,
                         uchar *b, size_t *b_len,
                         SORT_FIELD *sortorder);
