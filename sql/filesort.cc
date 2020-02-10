@@ -1947,7 +1947,7 @@ bool merge_buffers(Sort_param *param, IO_CACHE *from_file,
                         src +
                         (
                           (flag == 1 && param->using_packed_sortkeys()) ?
-                          Sort_keys::read_sortkey_length(src):
+                          rec_length - res_length:  // sort length
                           wr_offset
                         ),
                         bytes_to_write))
@@ -2049,7 +2049,7 @@ bool merge_buffers(Sort_param *param, IO_CACHE *from_file,
                     src +
                     (
                       (flag == 1 && param->using_packed_sortkeys()) ?
-                      Sort_keys::read_sortkey_length(src):
+                      rec_length - res_length:         // sort length
                       wr_offset
                     ),
                     bytes_to_write))
@@ -2209,16 +2209,15 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
       Field *field= sortorder->field;
       CHARSET_INFO *cs= sortorder->field->sort_charset();
       sortorder->length= sortorder->field->sort_length();
+      sortorder->original_length= sortorder->length;
       if (use_strnxfrm((cs=sortorder->field->sort_charset())))
       {
         *multi_byte_charset= true;
         sortorder->length= (uint) cs->strnxfrmlen(sortorder->length);
       }
       if (field->is_packable())
-      {
-        sortorder->original_length= field->field_length;
         sortorder->length_bytes= number_storage_requirement(field->field_length);
-      }
+
       if (sortorder->field->maybe_null())
         nullable_cols++;				// Place for NULL marker
     }
@@ -2231,12 +2230,9 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
         *multi_byte_charset= true;
       }
       if (sortorder->item->type_handler()->is_packable())
-      {
-        sortorder->original_length= sortorder->length;
         sortorder->length_bytes= number_storage_requirement(sortorder->length);
-      }
-      else
-        sortorder->original_length= sortorder->length;
+
+      sortorder->original_length= sortorder->length;
 
       if (sortorder->item->maybe_null)
         nullable_cols++;				// Place for NULL marker
