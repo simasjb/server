@@ -1285,134 +1285,6 @@ Type_handler_real_result::make_sort_key(uchar *to, Item *item,
 }
 
 
-uchar*
-Type_handler_string_result::make_sort_key_ext(uchar *to, Item *item,
-                                           const SORT_FIELD_ATTR *sort_field,
-                                           Sort_param *param) const
-{
-  CHARSET_INFO *cs= item->collation.collation;
-  bool maybe_null= item->maybe_null;
-
-  if (maybe_null)
-    *to++= 1;
-  String tmp(param->tmp_buffer, param->sort_length, cs);
-  String *res= item->str_result(&tmp);
-  if (!res)
-  {
-    if (maybe_null)
-      return to;
-    else
-    {
-      /* purecov: begin deadcode */
-      /*
-        This should only happen during extreme conditions if we run out
-        of memory or have an item marked not null when it can be null.
-        This code is here mainly to avoid a hard crash in this case.
-      */
-      DBUG_ASSERT(0);
-      DBUG_PRINT("warning",
-                 ("Got null on something that shouldn't be null"));
-      memset(to, 0, sort_field->length);  // Avoid crash
-      /* purecov: end */
-      return to;
-    }
-  }
-
-  /* Length always stored little-endian */
-  store_length(to, res->length(), sort_field->length_bytes);
-  to+=sort_field->length_bytes;
-  /* Store bytes of string */
-  memcpy(to, (uchar*)res->ptr(), res->length());
-  return to + res->length();
-}
-
-
-uchar*
-Type_handler_int_result::make_sort_key_ext(uchar *to, Item *item,
-                                           const SORT_FIELD_ATTR *sort_field,
-                                           Sort_param *param) const
-{
-  longlong value= item->val_int_result();
-  return make_sort_key_longlong_ext(to, item->maybe_null, item->null_value,
-                                    item->unsigned_flag, value, sort_field);
-}
-
-
-uchar*
-Type_handler_decimal_result::make_sort_key_ext(uchar *to, Item *item,
-                                           const SORT_FIELD_ATTR *sort_field,
-                                           Sort_param *param) const
-{
-  my_decimal dec_buf, *dec_val= item->val_decimal_result(&dec_buf);
-  if (item->maybe_null)
-  {
-    if (item->null_value)
-    {
-      *to++=0;
-      return to;
-    }
-    *to++= 1;
-  }
-  dec_val->to_binary(to, item->max_length - (item->decimals ? 1 : 0),
-                     item->decimals);
-  return to+sort_field->length;
-}
-
-uchar*
-Type_handler_real_result::make_sort_key_ext(uchar *to, Item *item,
-                                        const SORT_FIELD_ATTR *sort_field,
-                                        Sort_param *param) const
-{
-  double value= item->val_result();
-  if (item->maybe_null)
-  {
-    if (item->null_value)
-    {
-      *to++=0;
-      return to;
-    }
-    *to++= 1;
-  }
-  change_double_for_sort(value, to);
-  return to+sort_field->length;
-}
-
-
-uchar*
-Type_handler_temporal_result::make_sort_key_ext(uchar *to, Item *item,
-                                                const SORT_FIELD_ATTR *sort_field,
-                                                Sort_param *param) const
-{
-  MYSQL_TIME buf;
-  // This is a temporal type. No nanoseconds. Rounding mode is not important.
-  DBUG_ASSERT(item->cmp_type() == TIME_RESULT);
-  static const Temporal::Options opt(TIME_INVALID_DATES, TIME_FRAC_NONE);
-  if (item->get_date_result(current_thd, &buf, opt))
-  {
-    DBUG_ASSERT(item->maybe_null);
-    DBUG_ASSERT(item->null_value);
-    return make_sort_key_longlong_ext(to, item->maybe_null, true,
-                                      item->unsigned_flag, 0, sort_field);
-  }
-  return make_sort_key_longlong_ext(to, item->maybe_null, false,
-                                    item->unsigned_flag, pack_time(&buf),
-                                    sort_field);
-}
-
-
-/*
-  TODO(varun): check this with Bar
-*/
-
-uchar*
-Type_handler_timestamp_common::make_sort_key_ext(uchar *to, Item *item,
-                                                 const SORT_FIELD_ATTR *sort_field,
-                                                 Sort_param *param) const
-{
-  return to;
-}
-
-
 /** Make a sort-key from record. */
 
 static uint make_sortkey(Sort_param *param, uchar *to, uchar *ref_pos)
@@ -2487,31 +2359,6 @@ get_addon_fields(TABLE *table, uint sortlength,
   DBUG_RETURN(addon_fields);
 }
 
-
-
-void Sort_param::filesort_uses_packed_sortkeys()
-{
-
-  for (SORT_FIELD *sortorder= sort_keys->begin();
-       sortorder != sort_keys->end();
-       sortorder++)
-  {
-
-    if (sortorder->field)
-    {
-      Field *field= sortorder->field;
-      if (field->is_packable() || field->maybe_null())
-        m_packable_sortkey_length+= field->field_length;
-    }
-    else
-    {
-      if (sortorder->item->maybe_null ||
-          sortorder->item->type_handler()->is_packable())
-        m_packable_sortkey_length+= sortorder->length;
-    }
-  }
-}
-
 void Sort_param::try_to_pack_sortkeys()
 {
   if (using_packed_sortkeys())
@@ -2628,6 +2475,138 @@ SORT_INFO::~SORT_INFO()
 }
 
 
+/*
+  PACKING SORT KEYS
+*/
+
+uchar*
+Type_handler_string_result::make_sort_key_ext(uchar *to, Item *item,
+                                            const SORT_FIELD_ATTR *sort_field,
+                                            Sort_param *param) const
+{
+  CHARSET_INFO *cs= item->collation.collation;
+  bool maybe_null= item->maybe_null;
+
+  if (maybe_null)
+    *to++= 1;
+  String tmp(param->tmp_buffer, param->sort_length, cs);
+  String *res= item->str_result(&tmp);
+  if (!res)
+  {
+    if (maybe_null)
+      return to;
+    else
+    {
+      /* purecov: begin deadcode */
+      /*
+        This should only happen during extreme conditions if we run out
+        of memory or have an item marked not null when it can be null.
+        This code is here mainly to avoid a hard crash in this case.
+      */
+      DBUG_ASSERT(0);
+      DBUG_PRINT("warning",
+                 ("Got null on something that shouldn't be null"));
+      memset(to, 0, sort_field->length);  // Avoid crash
+      /* purecov: end */
+      return to;
+    }
+  }
+
+  /* Length always stored little-endian */
+  store_length(to, res->length(), sort_field->length_bytes);
+  to+=sort_field->length_bytes;
+  /* Store bytes of string */
+  memcpy(to, (uchar*)res->ptr(), res->length());
+  return to + res->length();
+}
+
+
+uchar*
+Type_handler_int_result::make_sort_key_ext(uchar *to, Item *item,
+                                           const SORT_FIELD_ATTR *sort_field,
+                                           Sort_param *param) const
+{
+  longlong value= item->val_int_result();
+  return make_sort_key_longlong_ext(to, item->maybe_null, item->null_value,
+                                    item->unsigned_flag, value, sort_field);
+}
+
+
+uchar*
+Type_handler_decimal_result::make_sort_key_ext(uchar *to, Item *item,
+                                            const SORT_FIELD_ATTR *sort_field,
+                                            Sort_param *param) const
+{
+  my_decimal dec_buf, *dec_val= item->val_decimal_result(&dec_buf);
+  if (item->maybe_null)
+  {
+    if (item->null_value)
+    {
+      *to++=0;
+      return to;
+    }
+    *to++= 1;
+  }
+  dec_val->to_binary(to, item->max_length - (item->decimals ? 1 : 0),
+                     item->decimals);
+  return to+sort_field->length;
+}
+
+uchar*
+Type_handler_real_result::make_sort_key_ext(uchar *to, Item *item,
+                                            const SORT_FIELD_ATTR *sort_field,
+                                            Sort_param *param) const
+{
+  double value= item->val_result();
+  if (item->maybe_null)
+  {
+    if (item->null_value)
+    {
+      *to++=0;
+      return to;
+    }
+    *to++= 1;
+  }
+  change_double_for_sort(value, to);
+  return to+sort_field->length;
+}
+
+
+uchar*
+Type_handler_temporal_result::make_sort_key_ext(uchar *to, Item *item,
+                                            const SORT_FIELD_ATTR *sort_field,
+                                            Sort_param *param) const
+{
+  MYSQL_TIME buf;
+  // This is a temporal type. No nanoseconds. Rounding mode is not important.
+  DBUG_ASSERT(item->cmp_type() == TIME_RESULT);
+  static const Temporal::Options opt(TIME_INVALID_DATES, TIME_FRAC_NONE);
+  if (item->get_date_result(current_thd, &buf, opt))
+  {
+    DBUG_ASSERT(item->maybe_null);
+    DBUG_ASSERT(item->null_value);
+    return make_sort_key_longlong_ext(to, item->maybe_null, true,
+                                      item->unsigned_flag, 0, sort_field);
+  }
+  return make_sort_key_longlong_ext(to, item->maybe_null, false,
+                                    item->unsigned_flag, pack_time(&buf),
+                                    sort_field);
+}
+
+
+/*
+  TODO(varun): check this with Bar
+*/
+
+uchar*
+Type_handler_timestamp_common::make_sort_key_ext(uchar *to, Item *item,
+                                            const SORT_FIELD_ATTR *sort_field,
+                                            Sort_param *param) const
+{
+  return to;
+}
+
+
 uint32 read_length(const uchar *from, uint bytes)
 {
   switch(bytes) {
@@ -2684,7 +2663,7 @@ int packed_keys_comparison(void *sortorder,
   return retval;
 }
 
-qsort2_cmp get_ptr_compare2(size_t size __attribute__((unused)))
+qsort2_cmp get_packed_keys_compare_ptr(size_t size __attribute__((unused)))
 {
   return (qsort2_cmp) packed_keys_comparison;
 }
@@ -2692,7 +2671,8 @@ qsort2_cmp get_ptr_compare2(size_t size __attribute__((unused)))
 
 int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
                             uchar *b, size_t *b_len,
-                            SORT_FIELD *sortorder, bool maybe_null)
+                            const SORT_FIELD_ATTR *sort_field,
+                            bool maybe_null)
 {
   int retval;
   size_t a_length, b_length;
@@ -2704,12 +2684,12 @@ int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
 
       if (*a == 0)
       {
-        *b_len+= read_length(b, sortorder->length_bytes);
+        *b_len+= read_length(b, sort_field->length_bytes);
         return -1;
       }
       else
       {
-        *a_len+= read_length(b, sortorder->length_bytes);
+        *a_len+= read_length(b, sort_field->length_bytes);
         return 1;
       }
     }
@@ -2725,20 +2705,21 @@ int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
     *a_len= *b_len= 0;
 
 
-  a_length= read_length(a, sortorder->length_bytes);
-  b_length= read_length(b, sortorder->length_bytes);
+  a_length= read_length(a, sort_field->length_bytes);
+  b_length= read_length(b, sort_field->length_bytes);
 
-  retval= cs->strnncollsp(a + sortorder->length_bytes, a_length,
-                          b + sortorder->length_bytes, b_length);
+  retval= cs->strnncollsp(a + sort_field->length_bytes, a_length,
+                          b + sort_field->length_bytes, b_length);
 
-  *a_len+= sortorder->length_bytes + a_length;
-  *b_len+= sortorder->length_bytes + b_length;
+  *a_len+= sort_field->length_bytes + a_length;
+  *b_len+= sort_field->length_bytes + b_length;
   return retval;
 
 }
 int compare_packed_keys_ext(uchar *a, size_t *a_len,
-                        uchar *b, size_t *b_len,
-                        SORT_FIELD *sortorder, bool maybe_null)
+                            uchar *b, size_t *b_len,
+                            const SORT_FIELD_ATTR *sort_field,
+                            bool maybe_null)
 {
   if (maybe_null)
   {
@@ -2748,12 +2729,12 @@ int compare_packed_keys_ext(uchar *a, size_t *a_len,
     {
       if (*a == 0)
       {
-        *b_len+= sortorder->length;
+        *b_len+= sort_field->length;
         return -1;
       }
       else
       {
-        *a_len+= sortorder->length;
+        *a_len+= sort_field->length;
         return 1;
       }
     }
@@ -2768,9 +2749,9 @@ int compare_packed_keys_ext(uchar *a, size_t *a_len,
   else
     *a_len= *b_len= 0;
 
-  *a_len+= sortorder->length;
-  *b_len+= sortorder->length;
-  return memcmp(a,b, sortorder->length);
+  *a_len+= sort_field->length;
+  *b_len+= sort_field->length;
+  return memcmp(a,b, sort_field->length);
 }
 
 

@@ -263,7 +263,9 @@ public:
   SORT_FIELD *end()   const { return sortorder.end(); }
   size_t size()       const { return sortorder.size(); }
 
-  bool using_packed_sortkeys() const { return m_using_packed_sortkeys; }
+  inline bool using_packed_sortkeys() const
+  { return m_using_packed_sortkeys; }
+
   void set_using_packed_sortkeys(bool val)
   {
     m_using_packed_sortkeys= val;
@@ -372,7 +374,7 @@ public:
     return m_using_packed_addons;
   }
 
-  bool using_packed_sortkeys() const
+  inline bool using_packed_sortkeys() const
   {
     DBUG_ASSERT(m_using_packed_sortkeys == sort_keys->using_packed_sortkeys());
     return m_using_packed_sortkeys;
@@ -404,12 +406,10 @@ public:
     const uchar *record_end= plen + *resl;
     *recl= static_cast<uint>(record_end - record_start);
   }
-  void filesort_uses_packed_sortkeys();
   void try_to_pack_sortkeys();
 
 private:
   uint m_packable_length;
-  uint m_packable_sortkey_length;
   bool m_using_packed_addons; ///< caches the value of using_packed_addons()
   bool m_using_packed_sortkeys;
 };
