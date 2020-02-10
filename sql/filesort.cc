@@ -985,6 +985,7 @@ write_keys(Sort_param *param,  SORT_INFO *fs_info, uint count,
   size_t rec_length;
   Merge_chunk buffpek;
   DBUG_ENTER("write_keys");
+  uint32 sort_length;
 
   rec_length= param->rec_length;
 
@@ -1004,14 +1005,13 @@ write_keys(Sort_param *param,  SORT_INFO *fs_info, uint count,
   buffpek.set_rowcount(static_cast<ha_rows>(count));
 
   const bool packed_addon_fields= param->using_packed_addons();
+  const bool packed_sort_keys= param->using_packed_sortkeys();
+
   for (uint ix= 0; ix < count; ++ix)
   {
     uchar *record= fs_info->get_sorted_record(ix);
-    if (packed_addon_fields)
-    {
-      rec_length= param->sort_length +
-        Addon_fields::read_addon_length(record + param->sort_length);
-    }
+    if (packed_addon_fields || packed_sort_keys)
+      rec_length= param->get_record_length(record);
     else
       rec_length= param->rec_length;
 
@@ -1943,7 +1943,14 @@ bool merge_buffers(Sort_param *param, IO_CACHE *from_file,
         */
         if (!check_dupl_count || dupl_count >= min_dupl_count)
         {
-          if (my_b_write(to_file,  src + wr_offset, bytes_to_write))
+          if(my_b_write(to_file,
+                        src +
+                        (
+                          (flag == 1 && param->using_packed_sortkeys()) ?
+                          Sort_keys::read_sortkey_length(src):
+                          wr_offset
+                        ),
+                        bytes_to_write))
             goto err;                           /* purecov: inspected */
         }
         if (cmp)
@@ -2026,7 +2033,8 @@ bool merge_buffers(Sort_param *param, IO_CACHE *from_file,
     max_rows-= buffpek->mem_count();
     for (uint ix= 0; ix <  buffpek->mem_count(); ++ix)
     {
-      param->get_rec_and_res_len(buffpek->current_key(),
+      uchar *src= buffpek->current_key();
+      param->get_rec_and_res_len(src,
                                  &rec_length, &res_length);
       const uint bytes_to_write= (flag == 0) ? rec_length : res_length;
       if (check_dupl_count)
@@ -2037,8 +2045,14 @@ bool merge_buffers(Sort_param *param, IO_CACHE *from_file,
         if (dupl_count < min_dupl_count)
           continue;
       }
-      if (my_b_write(to_file, buffpek->current_key() + wr_offset,
-                     bytes_to_write))
+      if(my_b_write(to_file,
+                    src +
+                    (
+                      (flag == 1 && param->using_packed_sortkeys()) ?
+                      Sort_keys::read_sortkey_length(src):
+                      wr_offset
+                    ),
+                    bytes_to_write))
         goto err;
       buffpek->advance_current_key(rec_length);
     }

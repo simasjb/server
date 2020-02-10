@@ -416,6 +416,12 @@ public:
       return sort_length;
   }
 
+  uint32 get_record_length(uchar *plen)
+  {
+    uint32 sort_length= get_sort_length(plen);
+    return sort_length + get_result_length(plen + sort_length);
+  }
+
   /**
     Getter for record length and result length.
     @param record_start Pointer to record.
