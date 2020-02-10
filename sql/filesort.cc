@@ -2258,6 +2258,7 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
   *multi_byte_charset= 0;
 
   length=0;
+  uint size_of_packable_fields=0;
 
   for (SORT_FIELD *sortorder= sort_keys->begin();
        sortorder != sort_keys->end();
@@ -2296,7 +2297,9 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
     }
     set_if_smaller(sortorder->length, thd->variables.max_sort_length);
     length+=sortorder->length;
+    size_of_packable_fields+= sortorder->length_bytes;
   }
+  sort_keys->set_size_of_packable_fields(size_of_packable_fields);
   DBUG_PRINT("info",("sort_length: %d",length));
   return length;
 }
@@ -2489,10 +2492,13 @@ void Sort_param::try_to_pack_sortkeys()
   sort_keys->set_using_packed_sortkeys(true);
   m_using_packed_sortkeys= true;
   const uint sz= Sort_keys::size_of_length_field;
+  uint size_of_packable_fields= sort_keys->get_size_of_packable_fields();
+
+  sort_length+= sz+size_of_packable_fields;
   /* Only the record length needs to be updated, the res_length does not need
      to be updated
   */
-  rec_length+= sz;
+  rec_length+= sz+size_of_packable_fields;
 }
 
 

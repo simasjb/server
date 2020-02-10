@@ -249,7 +249,8 @@ class Sort_keys
 public:
   Sort_keys(Sort_keys_array arr):
       sortorder(arr),
-      m_using_packed_sortkeys(false)
+      m_using_packed_sortkeys(false),
+      size_of_packable_fields(0)
   {
     DBUG_ASSERT(!arr.is_null());
   }
@@ -267,6 +268,15 @@ public:
   {
     m_using_packed_sortkeys= val;
   }
+  void set_size_of_packable_fields(uint len)
+  {
+    size_of_packable_fields= len;
+  }
+
+  uint get_size_of_packable_fields()
+  {
+    return size_of_packable_fields;
+  }
 
   static void store_sortkey_length(uchar *p, uint sz)
   {
@@ -283,6 +293,7 @@ public:
 private:
   Sort_keys_array sortorder;
   bool m_using_packed_sortkeys;
+  uint size_of_packable_fields;
 };
 
 
