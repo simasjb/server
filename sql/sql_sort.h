@@ -376,7 +376,8 @@ public:
 
   inline bool using_packed_sortkeys() const
   {
-    DBUG_ASSERT(m_using_packed_sortkeys == sort_keys->using_packed_sortkeys());
+    DBUG_ASSERT(m_using_packed_sortkeys ==
+                (sort_keys != NULL && sort_keys->using_packed_sortkeys()));
     return m_using_packed_sortkeys;
   }
 
@@ -384,6 +385,22 @@ public:
   bool using_addon_fields() const
   {
     return addon_fields != NULL;
+  }
+
+  uint32 get_result_length(uchar *plen)
+  {
+    if (using_packed_addons())
+      return Addon_fields::read_addon_length(plen);
+    else
+      return res_length;
+  }
+
+  uint32 get_sort_length(uchar *plen)
+  {
+    if (using_packed_sortkeys())
+      return Sort_keys::read_sortkey_length(plen);
+    else
+      return sort_length;
   }
 
   /**
@@ -394,35 +411,23 @@ public:
    */
   void get_rec_and_res_len(uchar *record_start, uint *recl, uint *resl)
   {
-    if (!using_packed_addons())
+    if (using_packed_addons() || using_packed_sortkeys())
+    {
+      uint sort_length= get_sort_length(record_start);
+      uchar *plen= record_start + sort_length;
+      *resl= get_result_length(plen);
+      DBUG_ASSERT(*resl <= res_length);
+      const uchar *record_end= plen + *resl;
+      *recl= static_cast<uint>(record_end - record_start);
+    }
+    else
     {
       *recl= rec_length;
       *resl= res_length;
-      return;
     }
-    uchar *plen= record_start + sort_length;
-    *resl= Addon_fields::read_addon_length(plen);
-    DBUG_ASSERT(*resl <= res_length);
-    const uchar *record_end= plen + *resl;
-    *recl= static_cast<uint>(record_end - record_start);
+    return;
   }
   void try_to_pack_sortkeys();
-
-  uint32 get_addon_length(uchar *plen)
-  {
-    if (using_packed_addons())
-      return Addon_fields::read_addon_length(plen);
-    else
-      return addon_length;
-  }
-
-  uint32 get_sort_length(uchar *plen)
-  {
-    if (using_packed_sortkeys())
-      return Sort_keys::read_sortkey_length(plen);
-    else
-      return sort_length;
-  }
 
 private:
   uint m_packable_length;

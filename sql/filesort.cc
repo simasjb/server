@@ -1718,7 +1718,7 @@ ulong read_to_buffer(IO_CACHE *fromfile, Merge_chunk *buffpek,
             break;                                // Incomplete record.
 
           uchar *plen= record + sort_length;
-          uint res_length= param->get_addon_length(plen);
+          uint res_length= param->get_result_length(plen);
           if (plen + res_length > buffpek->buffer_end())
             break;                                // Incomplete record.
           DBUG_ASSERT(res_length > 0);
