@@ -1402,7 +1402,7 @@ static uint make_sortkey(Sort_param *param, uchar *to, uchar *ref_pos)
     if ((field=sort_field->field))
     {						// Field
       if (using_packed_sortkeys)
-        end= field->make_packed_sort_key(to, sort_field->length);
+        end= field->make_sort_key_ext(to, sort_field->length);
       else
       {
         field->make_sort_key(to, sort_field->length);
