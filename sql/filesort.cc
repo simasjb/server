@@ -226,11 +226,6 @@ SORT_INFO *filesort(THD *thd, TABLE *table, Filesort *filesort,
   sort->addon_fields=  param.addon_fields;
   sort->sort_keys= param.sort_keys;
 
-  if (multi_byte_charset &&
-      !(param.tmp_buffer= (char*) my_malloc(param.sort_length,
-                                            MYF(MY_WME | MY_THREAD_SPECIFIC))))
-    goto err;
-
   if (select && select->quick)
     thd->inc_status_sort_range();
   else
@@ -279,6 +274,10 @@ SORT_INFO *filesort(THD *thd, TABLE *table, Filesort *filesort,
     param.try_to_pack_sortkeys();
     param.try_to_pack_addons(thd->variables.max_length_for_sort_data);
     param.using_pq= false;
+    if (!(param.tmp_buffer= (char*) my_malloc(param.sort_length,
+                                              MYF(MY_WME | MY_THREAD_SPECIFIC))))
+      goto err;
+
 
     size_t min_sort_memory= MY_MAX(MIN_SORT_MEMORY,
                                    param.sort_length*MERGEBUFF2);
@@ -1290,7 +1289,41 @@ Type_handler_string_result::make_sort_key_ext(uchar *to, Item *item,
                                            const SORT_FIELD_ATTR *sort_field,
                                            Sort_param *param) const
 {
-  return NULL;
+  CHARSET_INFO *cs= item->collation.collation;
+  bool maybe_null= item->maybe_null;
+
+  if (maybe_null)
+    *to++= 1;
+  String tmp(param->tmp_buffer, param->sort_length, cs);
+  String *res= item->str_result(&tmp);
+  if (!res)
+  {
+    if (maybe_null)
+      return to;
+    else
+    {
+      /* purecov: begin deadcode */
+      /*
+        This should only happen during extreme conditions if we run out
+        of memory or have an item marked not null when it can be null.
+        This code is here mainly to avoid a hard crash in this case.
+      */
+      DBUG_ASSERT(0);
+      DBUG_PRINT("warning",
+                 ("Got null on something that shouldn't be null"));
+      memset(to, 0, sort_field->length);  // Avoid crash
+      /* purecov: end */
+      return to;
+    }
+  }
+
+  /* Length always stored little-endian */
+  store_lowendian(static_cast<longlong>(res->length()), to,
+                  sort_field->length_bytes);
+  to+=sort_field->length_bytes;
+  /* Store bytes of string */
+  memcpy(to, (uchar*)res->ptr(), res->length());
+  return to + res->length();
 }
 
 

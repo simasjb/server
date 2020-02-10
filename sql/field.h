@@ -4195,6 +4195,30 @@ static inline longlong read_bigendian(const uchar *from, uint bytes)
   }
 }
 
+static void store_lowendian(ulonglong num, uchar *to, uint bytes)
+{
+  switch(bytes) {
+  case 1: *to= (uchar)num;    break;
+  case 2: int2store(to, num); break;
+  case 3: int3store(to, num); break;
+  case 4: int4store(to, num); break;
+  case 8: int8store(to, num); break;
+  default: DBUG_ASSERT(0);
+  }
+}
+
+static longlong read_lowendian(const uchar *from, uint bytes)
+{
+  switch(bytes) {
+  case 1: return from[0];
+  case 2: return uint2korr(from);
+  case 3: return uint3korr(from);
+  case 4: return uint4korr(from);
+  case 8: return sint8korr(from);
+  default: DBUG_ASSERT(0); return 0;
+  }
+}
+
 
 extern LEX_CSTRING temp_lex_str;
 
