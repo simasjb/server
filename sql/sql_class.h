@@ -6251,9 +6251,10 @@ public:
 /* Structs used when sorting */
 struct SORT_FIELD_ATTR
 {
-  uint length;          /* Length of sort field */
+  uint length;          /* Length of sort field, using weights */
   uint suffix_length;   /* Length suffix (0-4) */
   uint length_bytes;  /* Bytes to store the length */
+  uint original_length;  /* max length of sort field, storing orignal values*/
 };
 
 

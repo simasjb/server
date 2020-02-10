@@ -2177,10 +2177,12 @@ static uint
 sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
 {
   uint length;
+  uint original_sort_length=0;
   *multi_byte_charset= 0;
 
   length=0;
   uint size_of_packable_fields=0;
+  uint nullable_cols=0;
 
   for (SORT_FIELD *sortorder= sort_keys->begin();
        sortorder != sort_keys->end();
@@ -2199,9 +2201,12 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
         sortorder->length= (uint) cs->strnxfrmlen(sortorder->length);
       }
       if (field->is_packable())
+      {
+        sortorder->original_length= field->field_length;
         sortorder->length_bytes= number_storage_requirement(field->field_length);
+      }
       if (sortorder->field->maybe_null())
-        length++;				// Place for NULL marker
+        nullable_cols++;				// Place for NULL marker
     }
     else
     {
@@ -2212,18 +2217,26 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
         *multi_byte_charset= true;
       }
       if (sortorder->item->type_handler()->is_packable())
+      {
+        sortorder->original_length= sortorder->length;
         sortorder->length_bytes= number_storage_requirement(sortorder->length);
+      }
+      else
+        sortorder->original_length= sortorder->length;
 
       if (sortorder->item->maybe_null)
-        length++;				// Place for NULL marker
+        nullable_cols++;				// Place for NULL marker
     }
     set_if_smaller(sortorder->length, thd->variables.max_sort_length);
     length+=sortorder->length;
+
     size_of_packable_fields+= sortorder->length_bytes;
+    original_sort_length+= sortorder->original_length;
   }
   sort_keys->set_size_of_packable_fields(size_of_packable_fields);
+  sort_keys->set_sort_length(original_sort_length+nullable_cols);
   DBUG_PRINT("info",("sort_length: %d",length));
-  return length;
+  return length+nullable_cols;
 }
 
 
@@ -2391,11 +2404,11 @@ void Sort_param::try_to_pack_sortkeys()
   const uint sz= Sort_keys::size_of_length_field;
   uint size_of_packable_fields= sort_keys->get_size_of_packable_fields();
 
-  sort_length+= sz+size_of_packable_fields;
+  sort_length= sort_keys->get_sort_length() + sz + size_of_packable_fields;
   /* Only the record length needs to be updated, the res_length does not need
      to be updated
   */
-  rec_length+= sz+size_of_packable_fields;
+  rec_length= sort_length + res_length;
 }
 
 

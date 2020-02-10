@@ -250,7 +250,8 @@ public:
   Sort_keys(Sort_keys_array arr):
       sortorder(arr),
       m_using_packed_sortkeys(false),
-      size_of_packable_fields(0)
+      size_of_packable_fields(0),
+      sort_length(0)
   {
     DBUG_ASSERT(!arr.is_null());
   }
@@ -280,6 +281,16 @@ public:
     return size_of_packable_fields;
   }
 
+  void set_sort_length(uint len)
+  {
+    sort_length= len;
+  }
+
+  uint get_sort_length()
+  {
+    return sort_length;
+  }
+
   static void store_sortkey_length(uchar *p, uint sz)
   {
     int4store(p, sz - size_of_length_field);
@@ -296,6 +307,8 @@ private:
   Sort_keys_array sortorder;
   bool m_using_packed_sortkeys;
   uint size_of_packable_fields;
+  // orignal sort length when we store real values for sort key
+  uint sort_length;
 };
 
 
