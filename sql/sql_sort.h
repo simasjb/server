@@ -408,6 +408,22 @@ public:
   }
   void try_to_pack_sortkeys();
 
+  uint32 get_addon_length(uchar *plen)
+  {
+    if (using_packed_addons())
+      return Addon_fields::read_addon_length(plen);
+    else
+      return addon_length;
+  }
+
+  uint32 get_sort_length(uchar *plen)
+  {
+    if (using_packed_sortkeys())
+      return Sort_keys::read_sortkey_length(plen);
+    else
+      return sort_length;
+  }
+
 private:
   uint m_packable_length;
   bool m_using_packed_addons; ///< caches the value of using_packed_addons()

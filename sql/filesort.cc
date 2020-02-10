@@ -1679,7 +1679,7 @@ ulong read_to_buffer(IO_CACHE *fromfile, Merge_chunk *buffpek,
   if ((count= MY_MIN(buffpek->max_keys(),buffpek->rowcount())))
   {
     size_t bytes_to_read;
-    if (param->using_packed_addons())
+    if (param->using_packed_addons() || param->using_packed_sortkeys())
     {
       count= buffpek->rowcount();
       bytes_to_read= MY_MIN(buffpek->buffer_size(),
@@ -1694,36 +1694,45 @@ ulong read_to_buffer(IO_CACHE *fromfile, Merge_chunk *buffpek,
       return ((ulong) -1);
 
     size_t num_bytes_read;
-    if (param->using_packed_addons())
+
+    if (param->using_addon_fields() || param->using_packed_sortkeys())
     {
-      /*
-        The last record read is most likely not complete here.
-        We need to loop through all the records, reading the length fields,
-        and then "chop off" the final incomplete record.
-       */
-      uchar *record= buffpek->buffer_start();
-      uint ix= 0;
-      for (; ix < count; ++ix)
-      {
-        if (record + param->sort_length + Addon_fields::size_of_length_field >
-            buffpek->buffer_end())
-          break;                                // Incomplete record.
-        uchar *plen= record + param->sort_length;
-        uint res_length= Addon_fields::read_addon_length(plen);
-        if (plen + res_length > buffpek->buffer_end())
-          break;                                // Incomplete record.
-        DBUG_ASSERT(res_length > 0);
-        record+= param->sort_length;
-        record+= res_length;
-      }
-      DBUG_ASSERT(ix > 0);
-      count= ix;
-      num_bytes_read= record - buffpek->buffer_start();
-      DBUG_PRINT("info", ("read %llu bytes of complete records",
-                          static_cast<ulonglong>(bytes_to_read)));
+        /*
+          The last record read is most likely not complete here.
+          We need to loop through all the records, reading the length fields,
+          and then "chop off" the final incomplete record.
+        */
+        uchar *record= buffpek->buffer_start();
+        uint ix= 0;
+        uint size_of_addon_length= param->using_packed_addons()  ?
+                                   Addon_fields::size_of_length_field : 0;
+
+        for (; ix < count; ++ix)
+        {
+          uint sort_length=  param->using_packed_sortkeys() ?
+                             Sort_keys::read_sortkey_length(record) :
+                             param->sort_length;
+
+          if (record + sort_length + size_of_addon_length >
+              buffpek->buffer_end())
+            break;                                // Incomplete record.
+
+          uchar *plen= record + sort_length;
+          uint res_length= param->get_addon_length(plen);
+          if (plen + res_length > buffpek->buffer_end())
+            break;                                // Incomplete record.
+          DBUG_ASSERT(res_length > 0);
+          record+= sort_length;
+          record+= res_length;
+        }
+        DBUG_ASSERT(ix > 0);
+        count= ix;
+        num_bytes_read= record - buffpek->buffer_start();
+        DBUG_PRINT("info", ("read %llu bytes of complete records",
+                            static_cast<ulonglong>(bytes_to_read)));
     }
     else
-      num_bytes_read= bytes_to_read;
+        num_bytes_read= bytes_to_read;
 
     buffpek->init_current_key();
     buffpek->advance_file_position(num_bytes_read);			/* New filepos */
@@ -1828,8 +1837,16 @@ bool merge_buffers(Sort_param *param, IO_CACHE *from_file,
   }
   else
   {
-    cmp= get_ptr_compare(sort_length);
-    first_cmp_arg= (void*) &sort_length;
+    if (param->using_packed_sortkeys())
+    {
+      cmp= get_packed_keys_compare_ptr(sort_length);
+      first_cmp_arg= (void*) param->sort_keys;
+    }
+    else
+    {
+      cmp= get_ptr_compare(sort_length);
+      first_cmp_arg= (void*) &sort_length;
+    }
   }
   if (unlikely(init_queue(&queue, (uint) (Tb-Fb)+1,
                          offsetof(Merge_chunk,m_current_key), 0,
