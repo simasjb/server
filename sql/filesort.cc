@@ -2551,7 +2551,8 @@ Type_handler_string_result::make_sort_key_ext(uchar *to, Item *item,
   }
 
   /* Length always stored little-endian */
-  store_length(to, res->length(), sort_field->length_bytes);
+  store_lowendian(static_cast<ulonglong>(res->length()), to,
+                  sort_field->length_bytes);
   to+=sort_field->length_bytes;
   /* Store bytes of string */
   memcpy(to, (uchar*)res->ptr(), res->length());
@@ -2727,7 +2728,7 @@ int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
       }
       else
       {
-        *a_len+= read_length(b, sort_field->length_bytes);
+        *a_len+= read_length(a, sort_field->length_bytes);
         return 1;
       }
     }
