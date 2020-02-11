@@ -33,7 +33,6 @@ double get_merge_cost(ha_rows num_elements, ha_rows num_buffers, uint elem_size)
 }
 }
 
-
 /**
   This is a simplified, and faster version of @see get_merge_many_buffs_cost().
   We calculate the cost of merging buffers, by simulating the actions
@@ -175,7 +174,8 @@ void Filesort_buffer::sort_buffer(const Sort_param *param, uint count)
     reverse_record_pointers();
 
   uchar **buffer= NULL;
-  if (radixsort_is_appliccable(count, param->sort_length) &&
+  if (!param->using_packed_sortkeys() &&
+      radixsort_is_appliccable(count, param->sort_length) &&
       (buffer= (uchar**) my_malloc(count*sizeof(char*),
                                    MYF(MY_THREAD_SPECIFIC))))
   {
@@ -193,5 +193,3 @@ void Filesort_buffer::sort_buffer(const Sort_param *param, uint count)
             (void*)param->sort_keys :
             (void*) &size);
 }
-
-

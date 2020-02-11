@@ -304,9 +304,9 @@ public:
   static const uint size_of_length_field= 4;
 
 private:
-  Sort_keys_array sortorder;
-  bool m_using_packed_sortkeys;
-  uint size_of_packable_fields;
+  Sort_keys_array sortorder;        // Array of columns in the sort order
+  bool m_using_packed_sortkeys;     // Are we packing sort keys
+  uint size_of_packable_fields;     // Total length bytes for packable columns
   // orignal sort length when we store real values for sort key
   uint sort_length;
 };
@@ -430,27 +430,19 @@ public:
    */
   void get_rec_and_res_len(uchar *record_start, uint *recl, uint *resl)
   {
-    if (using_packed_addons() || using_packed_sortkeys())
-    {
       uint sort_length= get_sort_length(record_start);
       uchar *plen= record_start + sort_length;
       *resl= get_result_length(plen);
       DBUG_ASSERT(*resl <= res_length);
       const uchar *record_end= plen + *resl;
       *recl= static_cast<uint>(record_end - record_start);
-    }
-    else
-    {
-      *recl= rec_length;
-      *resl= res_length;
-    }
-    return;
   }
   void try_to_pack_sortkeys();
 
 private:
   uint m_packable_length;
   bool m_using_packed_addons; ///< caches the value of using_packed_addons()
+  /* caches the valye of using_packed_sortkeys */
   bool m_using_packed_sortkeys;
 };
 

@@ -1389,8 +1389,8 @@ Type_handler_inet6::make_sort_key_ext(uchar *to, Item *item,
   {
     if (item->null_value)
     {
-      memset(to, 0, Inet6::binary_length() + 1);
-      return to++;
+      *to++=0;
+      return to;
     }
     *to++= 1;
   }

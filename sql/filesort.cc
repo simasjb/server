@@ -1003,9 +1003,6 @@ write_keys(Sort_param *param,  SORT_INFO *fs_info, uint count,
     count=(uint) param->max_rows;               /* purecov: inspected */
   buffpek.set_rowcount(static_cast<ha_rows>(count));
 
-  const bool packed_addon_fields= param->using_packed_addons();
-  const bool packed_sort_keys= param->using_packed_sortkeys();
-
   for (uint ix= 0; ix < count; ++ix)
   {
     uchar *record= fs_info->get_sorted_record(ix);
@@ -2209,7 +2206,7 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
       Field *field= sortorder->field;
       CHARSET_INFO *cs= sortorder->field->sort_charset();
       sortorder->length= sortorder->field->sort_length();
-      sortorder->original_length= sortorder->length;
+      sortorder->original_length= field->field_length;
       if (use_strnxfrm((cs=sortorder->field->sort_charset())))
       {
         *multi_byte_charset= true;
@@ -2230,7 +2227,8 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
         *multi_byte_charset= true;
       }
       if (sortorder->item->type_handler()->is_packable())
-        sortorder->length_bytes= number_storage_requirement(sortorder->original_length);
+        sortorder->length_bytes=
+           number_storage_requirement(sortorder->original_length);
 
       if (sortorder->item->maybe_null)
         nullable_cols++;				// Place for NULL marker
@@ -2591,6 +2589,7 @@ Type_handler_decimal_result::make_sort_key_ext(uchar *to, Item *item,
   return to+sort_field->length;
 }
 
+
 uchar*
 Type_handler_real_result::make_sort_key_ext(uchar *to, Item *item,
                                             const SORT_FIELD_ATTR *sort_field,
@@ -2633,16 +2632,41 @@ Type_handler_temporal_result::make_sort_key_ext(uchar *to, Item *item,
 }
 
 
-/*
-  TODO(varun): check this with Bar
-*/
-
 uchar*
 Type_handler_timestamp_common::make_sort_key_ext(uchar *to, Item *item,
                                             const SORT_FIELD_ATTR *sort_field,
                                             Sort_param *param) const
 {
-  return to;
+ THD *thd= current_thd;
+  uint binlen= my_timestamp_binary_length(item->decimals);
+  Timestamp_or_zero_datetime_native_null native(thd, item);
+  if (native.is_null() || native.is_zero_datetime())
+  {
+    // NULL or '0000-00-00 00:00:00'
+    if (item->maybe_null)
+    {
+      *to++=0;
+      return to;
+    }
+  }
+  else
+  {
+    if (item->maybe_null)
+      *to++= 1;
+    if (native.length() != binlen)
+    {
+      /*
+        Some items can return native representation with a different
+        number of fractional digits, e.g.: GREATEST(ts_3, ts_4) can
+        return a value with 3 fractional digits, although its fractional
+        precision is 4. Re-pack with a proper precision now.
+      */
+      Timestamp(native).to_native(&native, item->datetime_precision(thd));
+    }
+    DBUG_ASSERT(native.length() == binlen);
+    memcpy((char *) to, native.ptr(), binlen);
+    return to+binlen;
+  }
 }
 
 
@@ -2657,12 +2681,6 @@ uint32 read_length(const uchar *from, uint bytes)
   }
 }
 
-int native_compare2(size_t *length, unsigned char **a, unsigned char **b)
-{
-  return memcmp(*a+ Sort_keys::size_of_length_field,
-                *b+ Sort_keys::size_of_length_field,
-                *length);
-}
 
 int packed_keys_comparison(void *sortorder,
                            unsigned char **a_ptr, unsigned char **b_ptr)
@@ -2702,6 +2720,11 @@ int packed_keys_comparison(void *sortorder,
   return retval;
 }
 
+
+/*
+  Compare function used for packing sort keys
+*/
+
 qsort2_cmp get_packed_keys_compare_ptr(size_t size __attribute__((unused)))
 {
   return (qsort2_cmp) packed_keys_comparison;
@@ -2720,17 +2743,10 @@ int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
     *a_len= *b_len= 1;
     if (*a != *b)
     {
-
       if (*a == 0)
-      {
-        *b_len+= read_length(b, sort_field->length_bytes);
         return -1;
-      }
       else
-      {
-        *a_len+= read_length(a, sort_field->length_bytes);
         return 1;
-      }
     }
     else
     {
@@ -2743,7 +2759,6 @@ int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
   else
     *a_len= *b_len= 0;
 
-
   a_length= read_length(a, sort_field->length_bytes);
   b_length= read_length(b, sort_field->length_bytes);
 
@@ -2753,8 +2768,9 @@ int compare_packed_keys_ext(CHARSET_INFO *cs, uchar *a, size_t *a_len,
   *a_len+= sort_field->length_bytes + a_length;
   *b_len+= sort_field->length_bytes + b_length;
   return retval;
-
 }
+
+
 int compare_packed_keys_ext(uchar *a, size_t *a_len,
                             uchar *b, size_t *b_len,
                             const SORT_FIELD_ATTR *sort_field,
@@ -2767,15 +2783,9 @@ int compare_packed_keys_ext(uchar *a, size_t *a_len,
     if (*a != *b)
     {
       if (*a == 0)
-      {
-        *b_len+= sort_field->length;
         return -1;
-      }
       else
-      {
-        *a_len+= sort_field->length;
         return 1;
-      }
     }
     else
     {
