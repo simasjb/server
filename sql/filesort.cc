@@ -985,7 +985,6 @@ write_keys(Sort_param *param,  SORT_INFO *fs_info, uint count,
   size_t rec_length;
   Merge_chunk buffpek;
   DBUG_ENTER("write_keys");
-  uint32 sort_length;
 
   rec_length= param->rec_length;
 
@@ -1010,10 +1009,7 @@ write_keys(Sort_param *param,  SORT_INFO *fs_info, uint count,
   for (uint ix= 0; ix < count; ++ix)
   {
     uchar *record= fs_info->get_sorted_record(ix);
-    if (packed_addon_fields || packed_sort_keys)
-      rec_length= param->get_record_length(record);
-    else
-      rec_length= param->rec_length;
+    rec_length= param->get_record_length(record);
 
     if (my_b_write(tempfile, record, rec_length))
       DBUG_RETURN(1);                           /* purecov: inspected */
@@ -2110,7 +2106,9 @@ Type_handler_string_result::sortlength(THD *thd,
 {
   CHARSET_INFO *cs;
   sortorder->length= item->max_length;
+  sortorder->original_length= item->max_length;
   set_if_smaller(sortorder->length, thd->variables.max_sort_length);
+
   if (use_strnxfrm((cs= item->collation.collation)))
   {
     sortorder->length= (uint) cs->strnxfrmlen(sortorder->length);
@@ -2129,7 +2127,7 @@ Type_handler_temporal_result::sortlength(THD *thd,
                                          const Type_std_attributes *item,
                                          SORT_FIELD_ATTR *sortorder) const
 {
-  sortorder->length= 8; // Sizof intern longlong
+  sortorder->original_length= sortorder->length= 8; // Sizof intern longlong
 }
 
 
@@ -2139,6 +2137,7 @@ Type_handler_timestamp_common::sortlength(THD *thd,
                                           SORT_FIELD_ATTR *sortorder) const
 {
   sortorder->length= my_timestamp_binary_length(item->decimals);
+  sortorder->original_length= sortorder->length;
 }
 
 
@@ -2147,7 +2146,7 @@ Type_handler_int_result::sortlength(THD *thd,
                                         const Type_std_attributes *item,
                                         SORT_FIELD_ATTR *sortorder) const
 {
-  sortorder->length= 8; // Sizof intern longlong
+  sortorder->original_length= sortorder->length= 8; // Sizof intern longlong
 }
 
 
@@ -2156,7 +2155,7 @@ Type_handler_real_result::sortlength(THD *thd,
                                         const Type_std_attributes *item,
                                         SORT_FIELD_ATTR *sortorder) const
 {
-  sortorder->length= sizeof(double);
+  sortorder->original_length= sortorder->length= sizeof(double);
 }
 
 
@@ -2168,6 +2167,7 @@ Type_handler_decimal_result::sortlength(THD *thd,
   sortorder->length=
     my_decimal_get_binary_size(item->max_length - (item->decimals ? 1 : 0),
                                item->decimals);  
+  sortorder->original_length= sortorder->original_length;
 }
 
 
@@ -2230,9 +2230,7 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *multi_byte_charset)
         *multi_byte_charset= true;
       }
       if (sortorder->item->type_handler()->is_packable())
-        sortorder->length_bytes= number_storage_requirement(sortorder->length);
-
-      sortorder->original_length= sortorder->length;
+        sortorder->length_bytes= number_storage_requirement(sortorder->original_length);
 
       if (sortorder->item->maybe_null)
         nullable_cols++;				// Place for NULL marker
