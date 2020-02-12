@@ -2400,17 +2400,21 @@ void Sort_param::try_to_pack_sortkeys()
   if (using_packed_sortkeys())
     return;
 
-  /*
-    TODO(varun)
-    some heuristic can be introduced here which would restrict packing
-    if the sort keys is quite small
-  */
-  sort_keys->set_using_packed_sortkeys(true);
-  m_using_packed_sortkeys= true;
   const uint sz= Sort_keys::size_of_length_field;
   uint size_of_packable_fields= sort_keys->get_size_of_packable_fields();
+  uint sort_len= sort_keys->get_sort_length();
 
-  sort_length= sort_keys->get_sort_length() + sz + size_of_packable_fields;
+  /*
+    Heuristic introduced, skip packing sort keys if saving less than 20 bytes
+  */
+
+  if (sort_len < 20 + sz + size_of_packable_fields)
+    return;
+
+
+  sort_keys->set_using_packed_sortkeys(true);
+  m_using_packed_sortkeys= true;
+  sort_length= sort_len + sz + size_of_packable_fields;
   /* Only the record length needs to be updated, the res_length does not need
      to be updated
   */
