@@ -2648,9 +2648,11 @@ Type_handler_timestamp_common::make_sort_key_ext(uchar *to, Item *item,
   {
     // NULL or '0000-00-00 00:00:00'
     if (item->maybe_null)
-    {
       *to++=0;
-      return to;
+    else
+    {
+      bzero(to, binlen);
+      to+= binlen;
     }
   }
   else
@@ -2669,8 +2671,9 @@ Type_handler_timestamp_common::make_sort_key_ext(uchar *to, Item *item,
     }
     DBUG_ASSERT(native.length() == binlen);
     memcpy((char *) to, native.ptr(), binlen);
-    return to+binlen;
+    to+= binlen;
   }
+  return to;
 }
 
 
