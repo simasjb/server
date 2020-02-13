@@ -8,5 +8,4 @@ EXPECT_2
 SELECT COUNT(DISTINCT idx) AS EXPECT_2 FROM mtr_wsrep_notify.status;
 EXPECT_2
 2
-TRUNCATE TABLE mtr_wsrep_notify.membership;
-TRUNCATE TABLE mtr_wsrep_notify.status;
+DROP SCHEMA mtr_wsrep_notify;
