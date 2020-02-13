@@ -20,13 +20,12 @@
 #include <my_sys.h>                             // pthread_mutex_t
 #include "m_string.h"                           // LEX_CUSTRING
 #include "mdl.h"                                // MDL_request_list
-#include "sql_class.h"
-#include "sql_rename.h"
 
 class Alter_info;
 class Alter_table_ctx;
 class Column_definition;
 class Create_field;
+class FK_rename_vector;
 struct TABLE_LIST;
 class THD;
 struct TABLE;

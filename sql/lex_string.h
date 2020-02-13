@@ -19,6 +19,7 @@
 #define LEX_STRING_INCLUDED
 
 #include "sql_alloc.h"
+#include "mysqld.h"
 
 
 typedef struct st_mysql_const_lex_string LEX_CSTRING;

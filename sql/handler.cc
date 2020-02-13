@@ -32,6 +32,7 @@
 #include "sql_parse.h"                          // check_stack_overrun
 #include "sql_acl.h"            // SUPER_ACL
 #include "sql_base.h"           // TDC_element
+#include "sql_rename.h"
 #include "discover.h"           // extension_based_table_discovery, etc
 #include "log_event.h"          // *_rows_log_event
 #include "create_options.h"
